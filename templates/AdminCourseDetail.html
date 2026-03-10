@@ -1,0 +1,18 @@
+<div class="container mt-4">
+    <h2>Học phần: {{ course['TenHocPhan'] }}</h2>
+    <p class="text-muted">Mã: {{ course['MaHocPhan'] }}</p>
+    <hr>
+    <h4>Danh sách bài học</h4>
+    <div class="list-group">
+        {% for lesson in lessons %}
+        <div class="list-group-item d-flex justify-content-between align-items-center">
+            <div>
+                <strong>Bài {{ lesson['ThuTu'] }}:</strong> {{ lesson['TenBaiHoc'] }}
+            </div>
+            <a href="/admin/lesson/{{ lesson['MaBaiHoc'] }}/manage" class="btn btn-sm btn-warning">
+                Chỉnh sửa tài liệu
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+</div>

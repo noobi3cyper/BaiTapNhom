@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quản lý Học Phần - LMS</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .search-container { margin-top: 50px; margin-bottom: 30px; }
+        .table-container { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .table thead { background-color: #007bff; color: white; }
+        /* Tùy chỉnh hiển thị cho bảng từ Pandas */
+        .data { width: 100%; }
+        /* Căn chỉnh chung cho bảng */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
+
+/* Căn lề trái cho Mã và Tên học phần để dễ đọc */
+th:nth-child(1), td:nth-child(1),
+th:nth-child(2), td:nth-child(2) {
+    text-align: left;
+    padding-left: 20px; /* Tạo khoảng trống đầu dòng */
+}
+
+/* Căn giữa cho Số tín chỉ */
+th:nth-child(3), td:nth-child(3) {
+    text-align: center;
+}
+
+/* Căn lề trái cho Ghi chú */
+th:nth-child(4), td:nth-child(4) {
+    text-align: left;
+}
+
+/* Thêm khoảng cách dòng để bảng thoáng hơn */
+th, td {
+    padding: 12px 15px;
+    border-bottom: 1px solid #ddd;
+}
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="row justify-content-center search-container">
+        <div class="col-md-8 text-center">
+            <h2 class="mb-4">Hệ Thống Tìm Kiếm Học Phần</h2>
+
+            <form action="/search" method="POST" class="input-group mb-3">
+                <input type="text"
+                       name="searchInput"
+                       class="form-control form-control-lg"
+                       placeholder="Nhập tên hoặc mã học phần..."
+                       value="{{ search_text }}">
+                <button class="btn btn-primary btn-lg" type="submit">Tìm kiếm</button>
+            </form>
+
+            {% if search_text %}
+            <p class="text-muted">Kết quả tìm kiếm cho: <strong>"{{ search_text }}"</strong></p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="row justify-content-center">
+        <div class="col-md-10 table-container">
+            {% if table %}
+                <div class="table-responsive">
+                    {{ table | safe }}
+                </div>
+            {% else %}
+                <div class="alert alert-warning text-center">
+                    Không tìm thấy dữ liệu phù hợp hoặc cơ sở dữ liệu trống.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
