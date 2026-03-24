@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+<div class="modal fade" id="addLessonModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form action="/add_lesson" method="POST" class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">Thêm Bài Học Mới</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" name="ma_hp" value="{{ course['MaHocPhan'] }}">
+                <div class="mb-3">
+                    <label class="form-label">Tên bài học</label>
+                    <input type="text" name="ten_bai_hoc" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Thứ tự</label>
+                    <input type="number" name="thu_tu" class="form-control" value="{{ lessons|length + 1 }}">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="submit" class="btn btn-success">Lưu bài học</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal fade" id="editLessonModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form action="/update_lesson_description" method="POST" class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title">Chỉnh sửa bài học</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" name="ma_bai_hoc" id="edit_ma_bai_hoc">
+                <div class="mb-3">
+                    <label class="form-label">Tên bài học</label>
+                    <input type="text" id="edit_ten_bai_hoc" class="form-control" readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Mô tả chi tiết</label>
+                    <textarea name="mo_ta" id="edit_mo_ta" class="form-control" rows="4"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="submit" class="btn btn-warning">Cập nhật</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal fade" id="editDocModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form action="/update_doc_name" method="POST" class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title">Đổi tên tài liệu</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" name="ma_tl" id="edit_doc_id">
+                <div class="mb-3">
+                    <label class="form-label">Tên mới</label>
+                    <input type="text" name="ten_moi" id="edit_doc_name" class="form-control" required>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="submit" class="btn btn-warning">Lưu thay đổi</button>
+            </div>
+        </form>
+    </div>
+</div>
+</body>
+</html>

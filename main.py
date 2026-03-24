@@ -1,124 +1,290 @@
+from flask import Flask, request, render_template, session, redirect, url_for, flash, abort
+from werkzeug.utils import secure_filename
+from functools import wraps
 import sqlite3
 import os
 import pandas as pd
-from flask import Flask, request, render_template, session
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__, static_url_path='/static')
 app.secret_key = "FelixPham"
+app.config['UPLOAD_FOLDER'] = 'static/uploads'
+ALLOWED_EXTENSIONS = {'pdf', 'docx', 'txt', 'png', 'jpg', 'zip'}
+
+DB_PATH = os.path.join('db', 'hocphan.db')
+
+# --- 1. CORE UTILITIES ---
+def get_db_connection():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
-# --- HÀM LOGIC DỮ LIỆU (KHÔNG ĐẶT ROUTE Ở ĐÂY) ---
-def get_html_table(search_text):
-    conn = sqlite3.connect(os.path.join('db', 'hocphan.db'))
-
-    # Lấy dữ liệu
-    if search_text:
-        query = "SELECT * FROM HocPhan WHERE TenHocPhan LIKE ? OR MaHocPhan LIKE ?"
-        df = pd.read_sql_query(query, conn, params=(f'%{search_text}%', f'%{search_text}%'))
-    else:
-        df = pd.read_sql_query("SELECT * FROM HocPhan", conn)
-
-    conn.close()
-
-    # 1. Thay thế giá trị None bằng khoảng trắng cho đẹp
-    df = df.fillna("")
-
-    # 2. Đổi tên cột sang Tiếng Việt có dấu
-    # Key là tên cột trong DB, Value là tên bạn muốn hiển thị
-    df = df.rename(columns={
-        'MaHocPhan': 'Mã Học Phần',
-        'TenHocPhan': 'Tên Học Phần',
-        'SoTinChi': 'Số Tín Chỉ',
-        'GhiChu': 'Ghi Chú'
-    })
-    df['Chi Tiết'] = df['Mã Học Phần'].apply(
-        lambda x: f'<a href="/course/{x}" class="btn btn-sm btn-primary">Xem bài học</a>'
-    )
-    df['Quản lý'] = df['Mã Học Phần'].apply(
-        lambda x: f'<a href="/admin/course/{x}" class="btn btn-sm btn-dark">⚙️ Quản trị</a>'
-    )
-
-    return df.to_html(classes='table table-striped table-hover align-middle', index=False, escape=False, border=0)
-
-    # Trả về bảng HTML
-    return df.to_html(classes='table table-striped table-hover', index=False, border=0)
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-# --- CÁC ROUTE CỦA FLASK ---
-
-@app.route('/')
-def index():
-    # Khi mới vào trang, hiển thị toàn bộ dữ liệu (search_text="")
-    html_table = get_html_table("")
-    return render_template('Search.html', search_text="", table=html_table)
+# --- 2. DATA LOGIC ---
 
 
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Kiểm tra xem user có đăng nhập và có role admin không
+        if session.get('role') != 'admin':
+            return abort(403) # Trả về HTTP 403 Forbidden
+        return f(*args, **kwargs)
+    return decorated_function
+
+# --- 3. AUTHENTICATION ROUTES ---
+@app.route('/register', methods=['POST'])
+def register():
+    # ... (Lấy form data) ...
+
+    if password != confirm_password:
+        flash('Mật khẩu xác nhận không khớp!', 'warning')
+        return redirect(request.referrer or url_for('index'))
+
+    hashed_pw = generate_password_hash(password)
+    role = 'admin' if admin_secret == app.secret_key else 'user'
+
+    try:
+        with get_db_connection() as conn:
+            conn.execute("INSERT INTO User (Username, Password, Role) VALUES (?, ?, ?)",
+                         (username, hashed_pw, role))
+            conn.commit()
+
+            session['username'] = username
+            session['role'] = role
+
+        flash('Đăng ký tài khoản thành công!', 'success')
+        return redirect(request.referrer or url_for('index'))
+    except sqlite3.IntegrityError:
+        flash('Tên đăng nhập đã tồn tại!', 'danger')
+        return redirect(request.referrer or url_for('index'))
+
+
+@app.route('/login', methods=['POST'])
+def login():
+    username = request.form.get('username')
+    password = request.form.get('password')
+    next_page = request.referrer or url_for('index')
+
+    with get_db_connection() as conn:
+        user = conn.execute("SELECT * FROM User WHERE Username = ?", (username,)).fetchone()
+
+        if user and check_password_hash(user['Password'], password):
+            session.clear()
+            session['user_id'] = user['Id']
+            session['username'] = user['Username']
+            session['role'] = user['Role']
+
+            # Gửi thông báo thành công (category: 'success')
+            flash(f'Chào mừng trở lại, {username}!', 'success')
+            return redirect(next_page)
+
+    # Gửi thông báo lỗi (category: 'danger' để hợp với màu đỏ của Bootstrap)
+    flash('Sai tài khoản hoặc mật khẩu!', 'danger')
+    return redirect(next_page)
+
+
+@app.route('/logout', methods=['GET', 'POST'])
+def logout():
+    session.clear()
+    return redirect(url_for('index'))
+
+
+# --- 4. MAIN INTERFACE ROUTES ---
+@app.route('/', methods=['GET', 'POST'])
 @app.route('/search', methods=['GET', 'POST'])
-def search_page():
-    search_text = ""
-    if request.method == 'POST':
-        # Lấy từ ô input name="searchInput" trong form
-        search_text = request.form.get('searchInput', '')
+def index():
+    search_text = request.form.get('searchInput', '') if request.method == 'POST' else ""
+    courses = []
 
-    # Gọi hàm xử lý dữ liệu
-    html_table = get_html_table(search_text)
+    with get_db_connection() as conn:
+        if search_text:
+            query = "SELECT MaHocPhan, TenHocPhan FROM HocPhan WHERE TenHocPhan LIKE ? OR MaHocPhan LIKE ?"
+            courses = conn.execute(query, (f'%{search_text}%', f'%{search_text}%')).fetchall()
+        else:
+            courses = conn.execute("SELECT * FROM HocPhan").fetchall()
 
-    return render_template('Search.html',
-                           search_text=search_text,
-                           table=html_table)
-
-
-# Route hiển thị trang quản lý tài liệu của một học phần cụ thể
-@app.route('/admin/course/<ma_hp>')
-def admin_course_detail(ma_hp):
-    conn = sqlite3.connect(os.path.join('db', 'hocphan.db'))
-    conn.row_factory = sqlite3.Row
-
-    # Lấy thông tin học phần
-    course = conn.execute("SELECT * FROM HocPhan WHERE MaHocPhan = ?", (ma_hp,)).fetchone()
-    # Lấy danh sách bài học
-    lessons = conn.execute("SELECT * FROM BaiHoc WHERE MaHocPhan = ? ORDER BY ThuTu", (ma_hp,)).fetchall()
-    conn.close()
-
-    return render_template('AdminCourseDetail.html', course=course, lessons=lessons)
-
-
-# 2. Trang quản lý tài liệu của một BÀI HỌC cụ thể
-@app.route('/admin/lesson/<int:lesson_id>/manage')
-def admin_manage_documents(lesson_id):
-    conn = sqlite3.connect(os.path.join('db', 'hocphan.db'))
-    conn.row_factory = sqlite3.Row
-
-    # Lấy thông tin bài học và học phần liên quan
-    lesson = conn.execute("""
-        SELECT bh.*, hp.TenHocPhan 
-        FROM BaiHoc bh 
-        JOIN HocPhan hp ON bh.MaHocPhan = hp.MaHocPhan 
-        WHERE bh.MaBaiHoc = ?""", (lesson_id,)).fetchone()
-
-    # Lấy danh sách tài liệu của bài học đó
-    documents = conn.execute("SELECT * FROM TaiLieuNoiDung WHERE MaBaiHoc = ?", (lesson_id,)).fetchall()
-    conn.close()
-
-    return render_template('AdminManageDocs.html', lesson=lesson, documents=documents)
+    # Truyền trực tiếp list các sqlite3.Row sang template
+    return render_template('Search.html', search_text=search_text, courses=courses)
 
 
 @app.route('/course/<ma_hp>')
 def course_detail(ma_hp):
-    conn = sqlite3.connect(os.path.join('db', 'hocphan.db'))
-    conn.row_factory = sqlite3.Row  # Giúp truy xuất theo tên cột
+    is_admin = session.get('role') == 'admin'
+    completed_lessons = []
 
-    # 1. Lấy thông tin học phần
-    hoc_phan = conn.execute("SELECT * FROM HocPhan WHERE MaHocPhan = ?", (ma_hp,)).fetchone()
+    try:
+        with get_db_connection() as conn:
+            course = conn.execute("SELECT * FROM HocPhan WHERE MaHocPhan = ?", (ma_hp,)).fetchone()
+            if not course:
+                return "Không tìm thấy học phần", 404
 
-    # 2. Lấy danh sách bài học của học phần đó
-    bai_hoc_list = conn.execute("SELECT * FROM BaiHoc WHERE MaHocPhan = ? ", (ma_hp,)).fetchall()
+            lessons = conn.execute("SELECT * FROM BaiHoc WHERE MaHocPhan = ? ORDER BY ThuTuHoc", (ma_hp,)).fetchall()
+            documents = conn.execute("""
+                SELECT tl.* FROM TaiLieuNoiDung tl
+                JOIN BaiHoc bh ON tl.MaBaiHoc = bh.MaBaiHoc
+                WHERE bh.MaHocPhan = ?
+            """, (ma_hp,)).fetchall()
 
-    conn.close()
+            if session.get('username'):
+                user = conn.execute("SELECT Id FROM User WHERE Username = ?", (session['username'],)).fetchone()
+                if user:
+                    data = conn.execute("SELECT MaBaiHoc FROM UserProgress WHERE User_Id = ?", (user['Id'],)).fetchall()
+                    completed_lessons = [item['MaBaiHoc'] for item in data]
 
-    if not hoc_phan:
-        return "Không tìm thấy học phần!", 404
+    except Exception as e:
+        return f"Lỗi truy xuất dữ liệu: {e}", 500
 
-    return render_template('CourseDetail.html', course=hoc_phan, lessons=bai_hoc_list)
+    return render_template('CourseDetail.html',
+                           course=course, lessons=lessons, documents=documents,
+                           is_admin=is_admin, completed_lessons=completed_lessons)
+
+
+# --- 5. CRUD API ROUTES ---
+@app.route('/update_progress', methods=['POST'])
+def update_progress():
+    username = session.get('username')
+    if not username:
+        return {"status": "error", "message": "Bạn cần đăng nhập để lưu tiến độ!"}, 401
+
+    data = request.json
+    ma_bai_hoc = data.get('ma_bai_hoc')
+    is_completed = data.get('completed')
+
+    try:
+        with get_db_connection() as conn:
+            user = conn.execute("SELECT Id FROM User WHERE Username = ?", (username,)).fetchone()
+            if user:
+                if is_completed:
+                    conn.execute("INSERT OR IGNORE INTO UserProgress (User_Id, MaBaiHoc, Status) VALUES (?, ?, 1)",
+                                 (user['Id'], ma_bai_hoc))
+                else:
+                    conn.execute("DELETE FROM UserProgress WHERE User_Id = ? AND MaBaiHoc = ?",
+                                 (user['Id'], ma_bai_hoc))
+                return {"status": "success"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}, 500
+
+    return {"status": "error", "message": "User không tồn tại"}, 404
+
+
+@app.route('/add_lesson', methods=['POST'])
+@admin_required # Gắn decorator ngay dưới @app.route
+def add_lesson():
+    ma_hp = request.form.get('ma_hp')
+    ten_bai_hoc = request.form.get('ten_bai_hoc')
+    thu_tu = request.form.get('thu_tu')
+
+    try:
+        with get_db_connection() as conn:
+            conn.execute("INSERT INTO BaiHoc (TenBaiHoc, ThuTuHoc, MaHocPhan) VALUES (?, ?, ?)",
+                         (ten_bai_hoc, thu_tu, ma_hp))
+        return redirect(url_for('course_detail', ma_hp=ma_hp))
+    except Exception as e:
+        return f"Lỗi: {e}", 500
+
+
+@app.route('/delete_lesson/<int:ma_bai_hoc>')
+@admin_required
+def delete_lesson(ma_bai_hoc):
+    try:
+        with get_db_connection() as conn:
+            lesson = conn.execute("SELECT MaHocPhan FROM BaiHoc WHERE MaBaiHoc = ?", (ma_bai_hoc,)).fetchone()
+            if lesson:
+                ma_hp = lesson['MaHocPhan']
+                conn.execute("DELETE FROM TaiLieuNoiDung WHERE MaBaiHoc = ?", (ma_bai_hoc,))
+                conn.execute("DELETE FROM BaiHoc WHERE MaBaiHoc = ?", (ma_bai_hoc,))
+                return redirect(f'/course/{ma_hp}')
+            return "Không tìm thấy bài học", 404
+    except Exception as e:
+        return f"Lỗi Database: {e}", 500
+
+
+@app.route('/add_doc', methods=['POST'])
+def add_doc():
+    ma_bai_hoc = request.form.get('ma_bai_hoc')
+    ten_tl = request.form.get('ten_tl')
+    file = request.files.get('file_tai_lieu')
+
+    if file and file.filename != '' and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)  # More elegant directory creation
+
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(file_path)
+
+        try:
+            with get_db_connection() as conn:
+                db_path_save = f'uploads/{filename}'
+                conn.execute(
+                    "INSERT INTO TaiLieuNoiDung (NoiDungVanBan, LoaiTaiLieu, DuongDanFile, MaBaiHoc) VALUES (?, ?, ?, ?)",
+                    (ten_tl, 'File', db_path_save, ma_bai_hoc))
+
+                info = conn.execute("SELECT MaHocPhan FROM BaiHoc WHERE MaBaiHoc = ?", (ma_bai_hoc,)).fetchone()
+                return redirect(url_for('course_detail', ma_hp=info['MaHocPhan']))
+        except Exception as e:
+            return f"Lỗi Database: {e}", 500
+
+    return "Lỗi: Không tìm thấy file hoặc định dạng không hợp lệ", 400
+
+# Thêm Decorator kiểm tra quyền Admin
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if session.get('role') != 'admin':
+            return "Bạn không có quyền thực hiện hành động này", 403
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+@app.route('/delete_doc/<int:ma_tl>')
+@admin_required
+def delete_doc(ma_tl):
+    try:
+        with get_db_connection() as conn:
+            # 1. Lấy thông tin file trước khi xóa
+            doc_info = conn.execute("""
+                SELECT tl.DuongDanFile, bh.MaHocPhan 
+                FROM TaiLieuNoiDung tl
+                JOIN BaiHoc bh ON tl.MaBaiHoc = bh.MaBaiHoc
+                WHERE tl.MaTaiLieu = ?
+            """, (ma_tl,)).fetchone()
+
+            if not doc_info:
+                return "Không tìm thấy tài liệu để xóa", 404
+
+            # 2. Xóa file vật lý trên hệ điều hành
+            # Cần map đúng thư mục gốc của project
+            file_path = os.path.join(app.root_path, 'static', doc_info['DuongDanFile'])
+            if os.path.exists(file_path):
+                os.remove(file_path) # Xóa file
+
+            # 3. Xóa bản ghi trong Database
+            conn.execute("DELETE FROM TaiLieuNoiDung WHERE MaTaiLieu = ?", (ma_tl,))
+            conn.commit()
+
+            return redirect(url_for('course_detail', ma_hp=doc_info['MaHocPhan']))
+    except Exception as e:
+        return f"Lỗi hệ thống: {e}", 500
+
+
+@app.route('/update_lesson_description', methods=['POST'])
+def update_lesson_description():
+    ma_bai_hoc = request.form.get('ma_bai_hoc')
+    mo_ta = request.form.get('mo_ta')
+
+    try:
+        with get_db_connection() as conn:
+            conn.execute("UPDATE BaiHoc SET MoTa = ? WHERE MaBaiHoc = ?", (mo_ta, ma_bai_hoc))
+            info = conn.execute("SELECT MaHocPhan FROM BaiHoc WHERE MaBaiHoc = ?", (ma_bai_hoc,)).fetchone()
+            return redirect(url_for('course_detail', ma_hp=info['MaHocPhan']))
+    except Exception as e:
+        return f"Lỗi khi cập nhật mô tả: {e}", 500
+
+
 if __name__ == '__main__':
     app.run(debug=True)
