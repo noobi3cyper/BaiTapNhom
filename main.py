@@ -5,12 +5,12 @@ import sqlite3
 import os
 import pandas as pd
 from werkzeug.security import generate_password_hash, check_password_hash
+import time
 
 app = Flask(__name__, static_url_path='/static')
 app.secret_key = "FelixPham"
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
-ALLOWED_EXTENSIONS = {'pdf', 'docx', 'txt', 'png', 'jpg', 'zip'}
-
+ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'png', 'jpg', 'zip'}
 DB_PATH = os.path.join('db', 'hocphan.db')
 
 # --- 1. CORE UTILITIES ---
@@ -39,10 +39,13 @@ def admin_required(f):
 # --- 3. AUTHENTICATION ROUTES ---
 @app.route('/register', methods=['POST'])
 def register():
-    # ... (Lấy form data) ...
+    username = request.form.get('username')
+    password = request.form.get('password')
+    confirm_password = request.form.get('confirm_password')
+    admin_secret = request.form.get('admin_secret', '') # Default là chuỗi rỗng để tránh NoneType
 
-    if password != confirm_password:
-        flash('Mật khẩu xác nhận không khớp!', 'warning')
+    if not username or not password:
+        flash('Vui lòng nhập đầy đủ thông tin!', 'warning')
         return redirect(request.referrer or url_for('index'))
 
     hashed_pw = generate_password_hash(password)
@@ -172,6 +175,31 @@ def update_progress():
     return {"status": "error", "message": "User không tồn tại"}, 404
 
 
+@app.route('/update_doc_name', methods=['POST'])
+@admin_required
+def update_doc_name():
+    """Hàm cập nhật tên hiển thị của tài liệu"""
+    ma_tl = request.form.get('ma_tl')
+    ten_moi = request.form.get('ten_moi')
+
+    try:
+        with get_db_connection() as conn:
+            # Bước 1: Lấy Mã Học Phần để có thể redirect người dùng về đúng trang cũ
+            doc_info = conn.execute("""
+                SELECT bh.MaHocPhan 
+                FROM TaiLieuNoiDung tl
+                JOIN BaiHoc bh ON tl.MaBaiHoc = bh.MaBaiHoc
+                WHERE tl.MaTaiLieu = ?
+            """, (ma_tl,)).fetchone()
+
+            if doc_info:
+                # Bước 2: Cập nhật tên tài liệu (NoiDungVanBan) trong Database
+                conn.execute("UPDATE TaiLieuNoiDung SET NoiDungVanBan = ? WHERE MaTaiLieu = ?", (ten_moi, ma_tl))
+                return redirect(url_for('course_detail', ma_hp=doc_info['MaHocPhan']))
+
+            return "Không tìm thấy tài liệu", 404
+    except Exception as e:
+        return f"Lỗi hệ thống: {e}", 500
 @app.route('/add_lesson', methods=['POST'])
 @admin_required # Gắn decorator ngay dưới @app.route
 def add_lesson():
@@ -202,34 +230,6 @@ def delete_lesson(ma_bai_hoc):
             return "Không tìm thấy bài học", 404
     except Exception as e:
         return f"Lỗi Database: {e}", 500
-
-
-@app.route('/add_doc', methods=['POST'])
-def add_doc():
-    ma_bai_hoc = request.form.get('ma_bai_hoc')
-    ten_tl = request.form.get('ten_tl')
-    file = request.files.get('file_tai_lieu')
-
-    if file and file.filename != '' and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)  # More elegant directory creation
-
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(file_path)
-
-        try:
-            with get_db_connection() as conn:
-                db_path_save = f'uploads/{filename}'
-                conn.execute(
-                    "INSERT INTO TaiLieuNoiDung (NoiDungVanBan, LoaiTaiLieu, DuongDanFile, MaBaiHoc) VALUES (?, ?, ?, ?)",
-                    (ten_tl, 'File', db_path_save, ma_bai_hoc))
-
-                info = conn.execute("SELECT MaHocPhan FROM BaiHoc WHERE MaBaiHoc = ?", (ma_bai_hoc,)).fetchone()
-                return redirect(url_for('course_detail', ma_hp=info['MaHocPhan']))
-        except Exception as e:
-            return f"Lỗi Database: {e}", 500
-
-    return "Lỗi: Không tìm thấy file hoặc định dạng không hợp lệ", 400
 
 # Thêm Decorator kiểm tra quyền Admin
 def admin_required(f):
@@ -273,6 +273,7 @@ def delete_doc(ma_tl):
 
 
 @app.route('/update_lesson_description', methods=['POST'])
+@admin_required
 def update_lesson_description():
     ma_bai_hoc = request.form.get('ma_bai_hoc')
     mo_ta = request.form.get('mo_ta')
@@ -285,6 +286,57 @@ def update_lesson_description():
     except Exception as e:
         return f"Lỗi khi cập nhật mô tả: {e}", 500
 
+
+@app.route('/edit_lesson/<int:ma_bai_hoc>', methods=['POST'])
+@admin_required
+def edit_lesson(ma_bai_hoc):
+    """Hàm cập nhật thông tin bài học (Tên và Thứ tự)"""
+    ten_bai_hoc = request.form.get('ten_bai_hoc')
+    thu_tu = request.form.get('thu_tu')
+
+    try:
+        with get_db_connection() as conn:
+            conn.execute("""
+                UPDATE BaiHoc 
+                SET TenBaiHoc = ?, ThuTuHoc = ? 
+                WHERE MaBaiHoc = ?
+            """, (ten_bai_hoc, thu_tu, ma_bai_hoc))
+
+            info = conn.execute("SELECT MaHocPhan FROM BaiHoc WHERE MaBaiHoc = ?", (ma_bai_hoc,)).fetchone()
+            return redirect(url_for('course_detail', ma_hp=info['MaHocPhan']))
+    except Exception as e:
+        return f"Lỗi Database: {e}", 500
+
+
+@app.route('/add_doc', methods=['POST'])
+@admin_required  # ĐÃ BỔ SUNG BẢO MẬT
+def add_doc():
+    ma_bai_hoc = request.form.get('ma_bai_hoc')
+    ten_tl = request.form.get('ten_tl')
+    file = request.files.get('file_tai_lieu')
+
+    if file and file.filename != '' and allowed_file(file.filename):
+        # Tạo tên file Unique bằng Timestamp để chống ghi đè
+        original_filename = secure_filename(file.filename)
+        unique_filename = f"{int(time.time())}_{original_filename}"
+
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+        file.save(file_path)
+
+        try:
+            with get_db_connection() as conn:
+                db_path_save = f'uploads/{unique_filename}'
+                conn.execute(
+                    "INSERT INTO TaiLieuNoiDung (NoiDungVanBan, LoaiTaiLieu, DuongDanFile, MaBaiHoc) VALUES (?, ?, ?, ?)",
+                    (ten_tl, 'File', db_path_save, ma_bai_hoc))
+
+                info = conn.execute("SELECT MaHocPhan FROM BaiHoc WHERE MaBaiHoc = ?", (ma_bai_hoc,)).fetchone()
+                return redirect(url_for('course_detail', ma_hp=info['MaHocPhan']))
+        except Exception as e:
+            return f"Lỗi Database: {e}", 500
+
+    return "Lỗi: Không tìm thấy file hoặc định dạng không hợp lệ", 400
 
 if __name__ == '__main__':
     app.run(debug=True)
