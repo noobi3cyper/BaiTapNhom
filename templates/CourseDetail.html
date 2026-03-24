@@ -4,10 +4,10 @@
 
 {% block head %}
 <style>
-    /* CSS hiện tại của bạn */
     .course-header { background: white; padding: 2rem; border-bottom: 1px solid #dee2e6; margin-bottom: 2rem; display: flex; justify-content: space-between; align-items: center; border-radius: 12px; }
-    .edit-only { display: none !important; }
-    body.edit-mode-active .edit-only { display: flex !important; }
+
+    /* Đã xóa các class liên quan đến edit-mode vì Admin mặc định được quyền sửa */
+
     .lesson-item { background: white; margin-bottom: 12px; border-radius: 10px; border: 1px solid #e0e0e0; overflow: hidden; transition: all 0.3s ease; }
     .lesson-item[open] { border-color: #0d6efd; box-shadow: 0 5px 15px rgba(0,0,0,0.08); }
     .lesson-summary { list-style: none; padding: 18px 25px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
@@ -18,54 +18,24 @@
     .lesson-details { padding: 0 25px 25px 70px; border-top: 1px solid #f0f0f0; padding-top: 15px; }
     .document-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; background: #f8f9fa; border-radius: 8px; margin-bottom: 8px; }
     .document-item a { text-decoration: none; color: #333; display: flex; align-items: center; gap: 10px; }
-    .add-doc-area { margin-top: 20px; padding: 15px; background: #fff3cd; border-radius: 8px; border: 1px dashed #ffeeba; }
-    .mini-upload-form { display: flex; gap: 10px; align-items: center; }
-
-    /* CSS CHO TIẾN ĐỘ */
     .progress-check-container { display: flex; align-items: center; margin-right: 10px; }
     .lesson-checkbox { width: 20px; height: 20px; cursor: pointer; accent-color: #198754; }
-
-    /* Hiệu ứng gạch ngang khi hoàn thành */
-    .completed-lesson .lesson-title {
-        text-decoration: line-through !important;
-        color: #adb5bd !important;
-        opacity: 0.7;
-    }
+    .completed-lesson .lesson-title { text-decoration: line-through !important; color: #adb5bd !important; opacity: 0.7; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container mt-3">
-    <nav aria-label="breadcrumb">
-        <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a href="{{ url_for('index') }}" class="text-decoration-none">Trang chủ</a></li>
-            <li class="breadcrumb-item active">{{ course['TenHocPhan'] }}</li>
-        </ol>
-    </nav>
-
     <div class="course-header shadow-sm">
         <div class="header-info">
             <h1 class="fw-bold text-primary">{{ course['TenHocPhan'] }}</h1>
             <p class="text-muted mb-0">Mã học phần: {{ course['MaHocPhan'] }}</p>
         </div>
 
-        <div class="flex-grow-1 mx-4 d-none d-md-block" style="max-width: 400px;">
-            <div class="d-flex justify-content-between align-items-center mb-1">
-                <span class="fw-bold text-muted small">TIẾN ĐỘ</span>
-                <span id="progress-text" class="fw-bold text-success">0%</span>
-            </div>
-            <div class="progress" style="height: 10px; border-radius: 10px;">
-                <div id="main-progress-bar" class="progress-bar bg-success progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%;"></div>
-            </div>
-        </div>
-
         {% if is_admin %}
-        <div class="admin-controls">
-            <button id="toggleEditMode" class="btn btn-secondary rounded-pill shadow-sm">
-                <i class="bi bi-gear-fill"></i> Sửa: <span id="modeStatus">TẮT</span>
-            </button>
-            <button class="btn btn-success rounded-pill shadow-sm ms-2" data-bs-toggle="modal" data-bs-target="#addLessonModal">
-                <i class="bi bi-plus-lg"></i> Thêm bài
+        <div class="admin-controls d-flex align-items-center gap-2">
+            <button class="btn btn-success rounded-pill shadow-sm" data-bs-toggle="modal" data-bs-target="#addLessonModal">
+                <i class="bi bi-plus-lg"></i> Thêm bài học
             </button>
         </div>
         {% endif %}
@@ -77,37 +47,46 @@
             <summary class="lesson-summary">
                 <div class="summary-left">
                     <div class="progress-check-container">
-                        <input type="checkbox"
-                               class="lesson-checkbox progress-update"
-                               data-id="{{ lesson['MaBaiHoc'] }}"
-                               {% if lesson['MaBaiHoc'] in completed_lessons %} checked {% endif %}
-                               onclick="event.stopPropagation();">
+                        <input type="checkbox" class="lesson-checkbox progress-update" data-id="{{ lesson['MaBaiHoc'] }}" {% if lesson['MaBaiHoc'] in completed_lessons %} checked {% endif %} onclick="event.stopPropagation();">
                     </div>
                     <span class="lesson-num">{{ lesson['ThuTuHoc'] }}</span>
                     <span class="lesson-title">{{ lesson['TenBaiHoc'] }}</span>
                 </div>
-                <div class="admin-actions edit-only gap-2">
-                    <button class="btn btn-link text-warning p-0" data-bs-toggle="modal" data-bs-target="#editLessonModal"
-                            data-ma-bai-hoc="{{ lesson['MaBaiHoc'] }}" data-ten-bai-hoc="{{ lesson['TenBaiHoc'] }}"
-                            data-mo-ta="{{ lesson['MoTa'] or '' }}" onclick="event.stopPropagation();">
+
+                {% if is_admin %}
+                <div class="admin-actions d-flex gap-3">
+                    <button class="btn btn-link text-success p-0" title="Thêm tài liệu" data-bs-toggle="modal" data-bs-target="#addDocModal" data-ma-bai-hoc="{{ lesson['MaBaiHoc'] }}" onclick="event.stopPropagation();">
+                        <i class="bi bi-file-earmark-plus-fill fs-5"></i>
+                    </button>
+                    <button class="btn btn-link text-warning p-0" title="Sửa bài học" data-bs-toggle="modal" data-bs-target="#editLessonModal" data-ma-bai-hoc="{{ lesson['MaBaiHoc'] }}" data-ten-bai-hoc="{{ lesson['TenBaiHoc'] }}" data-mo-ta="{{ lesson['MoTa'] or '' }}" onclick="event.stopPropagation();">
                         <i class="bi bi-pencil-square fs-5"></i>
                     </button>
-                    <a href="/delete_lesson/{{ lesson['MaBaiHoc'] }}" class="btn btn-link text-danger p-0"
-                       onclick="event.stopPropagation(); return confirm('Xóa bài học này?');">
+                    <a href="/delete_lesson/{{ lesson['MaBaiHoc'] }}" class="btn btn-link text-danger p-0" title="Xóa bài học" onclick="event.stopPropagation(); return confirm('Bạn có chắc chắn muốn xóa bài học này và toàn bộ tài liệu bên trong?');">
                         <i class="bi bi-trash3 fs-5"></i>
                     </a>
                 </div>
+                {% endif %}
             </summary>
+
             <div class="lesson-details">
                 {% if lesson['MoTa'] %}<p class="text-muted small italic mb-3">{{ lesson['MoTa'] }}</p>{% endif %}
                 <ul class="list-unstyled">
                     {% for doc in documents if doc['MaBaiHoc'] == lesson['MaBaiHoc'] %}
                     <li class="document-item">
                         <a href="{{ url_for('static', filename=doc['DuongDanFile']) }}" target="_blank">
-                            {% set ext = doc['DuongDanFile'].split('.')[-1].lower() %}
-                            <i class="bi bi-file-earmark{% if ext=='pdf' %}-pdf text-danger{% elif ext in ['doc','docx'] %}-word text-primary{% elif ext in ['xls','xlsx'] %}-excel text-success{% else %}-text text-secondary{% endif %}"></i>
-                            {{ doc['NoiDungVanBan'] }}
+                            <i class="bi bi-file-earmark-text text-secondary"></i> {{ doc['NoiDungVanBan'] }}
                         </a>
+
+                        {% if is_admin %}
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#editDocModal" data-ma-tl="{{ doc['MaTaiLieu'] }}" data-ten-tl="{{ doc['NoiDungVanBan'] }}">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <a href="/delete_doc/{{ doc['MaTaiLieu'] }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('Xóa tài liệu này?');">
+                                <i class="bi bi-x-lg"></i>
+                            </a>
+                        </div>
+                        {% endif %}
                     </li>
                     {% endfor %}
                 </ul>
@@ -116,34 +95,124 @@
         {% endfor %}
     </div>
 </div>
+
+<div class="modal fade" id="addLessonModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form action="/add_lesson" method="POST" class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">Thêm Bài Học Mới</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" name="ma_hp" value="{{ course['MaHocPhan'] }}">
+                <div class="mb-3">
+                    <label class="form-label">Tên bài học</label>
+                    <input type="text" name="ten_bai_hoc" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Thứ tự hiển thị</label>
+                    <input type="number" name="thu_tu" class="form-control" value="{{ lessons|length + 1 }}" required>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="submit" class="btn btn-success">Lưu bài học</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal fade" id="editLessonModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form action="/update_lesson_description" method="POST" class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title">Chỉnh sửa bài học</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" name="ma_bai_hoc" id="edit_ma_bai_hoc">
+                <div class="mb-3">
+                    <label class="form-label">Tên bài học</label>
+                    <input type="text" id="edit_ten_bai_hoc" class="form-control" readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Mô tả chi tiết</label>
+                    <textarea name="mo_ta" id="edit_mo_ta" class="form-control" rows="4"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="submit" class="btn btn-warning">Cập nhật</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal fade" id="addDocModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form action="/add_doc" method="POST" enctype="multipart/form-data" class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">Thêm Tài Liệu Mới</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" name="ma_bai_hoc" id="add_doc_ma_bai_hoc">
+                <div class="mb-3">
+                    <label class="form-label">Tên hiển thị của tài liệu</label>
+                    <input type="text" name="ten_tl" class="form-control" placeholder="VD: Slide Bài 1" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Chọn File tải lên</label>
+                    <input type="file" name="file_tai_lieu" class="form-control" required>
+                    <div class="form-text">Hỗ trợ: PDF, DOCX, TXT, PNG, JPG, ZIP.</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="submit" class="btn btn-primary">Tải lên</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal fade" id="editDocModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form action="/update_doc_name" method="POST" class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title">Đổi tên tài liệu</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" name="ma_tl" id="edit_doc_id">
+                <div class="mb-3">
+                    <label class="form-label">Tên mới</label>
+                    <input type="text" name="ten_moi" id="edit_doc_name" class="form-control" required>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="submit" class="btn btn-warning">Lưu thay đổi</button>
+            </div>
+        </form>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-    // Hàm cập nhật thanh tiến độ trực quan
+    // Hàm cập nhật thanh tiến độ (Giữ nguyên)
     function updateProgressBar() {
-    const total = document.querySelectorAll('.progress-update').length;
-    const checked = document.querySelectorAll('.progress-update:checked').length;
-    const percentage = total > 0 ? Math.round((checked / total) * 100) : 0;
+        const total = document.querySelectorAll('.progress-update').length;
+        const checked = document.querySelectorAll('.progress-update:checked').length;
+        const percentage = total > 0 ? Math.round((checked / total) * 100) : 0;
 
-    const bar = document.getElementById('main-progress-bar');
-    const text = document.getElementById('progress-text');
+        const bar = document.getElementById('main-progress-bar');
+        const text = document.getElementById('progress-text');
 
-    if(bar) bar.style.width = percentage + '%';
-    if(text) text.innerText = percentage + '%';
+        if(bar) bar.style.width = percentage + '%';
+        if(text) text.innerText = percentage + '%';
 
-    // HIỆU ỨNG PHÁO HOA KHI ĐẠT 100%
-    if (percentage === 100 && total > 0) {
-        confetti({
-            particleCount: 150,
-            spread: 70,
-            origin: { y: 0.6 },
-            colors: ['#0d6efd', '#198754', '#ffc107']
-        });
+        if (percentage === 100 && total > 0 && typeof confetti === 'function') {
+            confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#0d6efd', '#198754', '#ffc107'] });
+        }
     }
-}
 
-    // Xử lý sự kiện Tick Checkbox
     document.querySelectorAll('.progress-update').forEach(checkbox => {
         checkbox.addEventListener('change', function() {
             const maBaiHoc = this.getAttribute('data-id');
@@ -155,35 +224,49 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ma_bai_hoc: maBaiHoc, completed: isCompleted })
             })
-            .then(response => response.json())
+            .then(res => res.json())
             .then(data => {
                 if (data.status === 'success') {
-                    // CẬP NHẬT GIAO DIỆN TỨ THÌ: Thêm/Xóa class gạch ngang
-                    if (isCompleted) {
-                        lessonRow.classList.add('completed-lesson');
-                    } else {
-                        lessonRow.classList.remove('completed-lesson');
-                    }
+                    isCompleted ? lessonRow.classList.add('completed-lesson') : lessonRow.classList.remove('completed-lesson');
                     updateProgressBar();
                 } else {
                     alert('Lỗi: ' + data.message);
                     this.checked = !isCompleted;
                 }
-            })
-            .catch(err => {
+            }).catch(err => {
                 console.error('Error:', err);
                 this.checked = !isCompleted;
             });
         });
     });
 
-    // Toggle Edit Mode
-    document.getElementById('toggleEditMode')?.addEventListener('click', function() {
-        document.body.classList.toggle('edit-mode-active');
-        document.getElementById('modeStatus').innerText = document.body.classList.contains('edit-mode-active') ? "BẬT" : "TẮT";
-        this.className = document.body.classList.contains('edit-mode-active') ? "btn btn-danger rounded-pill shadow-sm" : "btn btn-secondary rounded-pill shadow-sm";
-    });
-
     document.addEventListener('DOMContentLoaded', updateProgressBar);
+
+    // Xử lý dữ liệu cho các Modal
+    const editLessonModal = document.getElementById('editLessonModal');
+    if (editLessonModal) {
+        editLessonModal.addEventListener('show.bs.modal', function (event) {
+            const button = event.relatedTarget;
+            document.getElementById('edit_ma_bai_hoc').value = button.getAttribute('data-ma-bai-hoc');
+            document.getElementById('edit_ten_bai_hoc').value = button.getAttribute('data-ten-bai-hoc');
+            document.getElementById('edit_mo_ta').value = button.getAttribute('data-mo-ta');
+        });
+    }
+
+    const addDocModal = document.getElementById('addDocModal');
+    if (addDocModal) {
+        addDocModal.addEventListener('show.bs.modal', function (event) {
+            document.getElementById('add_doc_ma_bai_hoc').value = event.relatedTarget.getAttribute('data-ma-bai-hoc');
+        });
+    }
+
+    const editDocModal = document.getElementById('editDocModal');
+    if (editDocModal) {
+        editDocModal.addEventListener('show.bs.modal', function (event) {
+            const button = event.relatedTarget;
+            document.getElementById('edit_doc_id').value = button.getAttribute('data-ma-tl');
+            document.getElementById('edit_doc_name').value = button.getAttribute('data-ten-tl');
+        });
+    }
 </script>
 {% endblock %}
